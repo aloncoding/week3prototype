@@ -163,4 +163,25 @@ public class WallSlidingModule : GroundedControllerAbilityModule
         }
         return true;
     }
+
+    //--- Added for CubeFormSwitcher ---
+    public void SetSlideGravity(float a_Value)
+    {
+        m_SlideGravity = a_Value;
+    }
+
+    public void SetSlideFriction(float a_Value)
+    {
+        m_SlideFriction = a_Value;
+    }
+
+    public float GetSlideGravity()
+    {
+        return m_SlideGravity;
+    }
+
+    public float GetSlideFriction()
+    {
+        return m_SlideFriction;
+    }
 }

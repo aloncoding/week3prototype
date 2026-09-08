@@ -76,4 +76,15 @@ public class WallJumpModule : GroundedControllerAbilityModule
     public override string GetSpriteState(){
         return "JumpSide";
     }
+
+    //--- Added for CubeFormSwitcher ---
+    public void SetJumpVelocity(float a_Value)
+    {
+        m_JumpVelocity = a_Value;
+    }
+
+    public float GetJumpVelocity()
+    {
+        return m_JumpVelocity;
+    }
 }

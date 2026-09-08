@@ -30,6 +30,7 @@ public class GroundedCharacterController : CharacterControllerBase
     [SerializeField] float m_JumpAlignedToGroundFactor = 0.0f;
     [SerializeField] float m_HorizontalJumpBoostFactor = 0.0f;
     [SerializeField] bool m_ResetVerticalSpeedOnJumpIfMovingDown = false;
+    [SerializeField] float m_WallStickFactor = 0.0f;
     float m_LastJumpPressedTime;
     bool m_JumpInputIsCached;
     bool m_JumpCutPossible;
@@ -402,6 +403,10 @@ public class GroundedCharacterController : CharacterControllerBase
         {
             fGravity = Vector2.zero;
         }
+        if (!m_ControlledCollider.IsGrounded() && m_ControlledCollider.GetSideCastInfo().m_HasHitSide && m_WallStickFactor > 0f)
+        {
+            fGravity *= (1f - m_WallStickFactor);
+        }
         return fGravity;
     }
     public float GetFrictionConstant()
@@ -418,6 +423,12 @@ public class GroundedCharacterController : CharacterControllerBase
     {
         return m_JumpVelocity;
     }
+    
+    public void SetJumpVelocity(float a_Value) { m_JumpVelocity = a_Value; }
+    public void SetGravity(float a_Value) { m_Gravity = a_Value; }
+    public void SetFrictionConstant(float a_Value) { m_FrictionConstant = a_Value; }
+    public void SetWallStickFactor(float a_Value) { m_WallStickFactor = Mathf.Clamp01(a_Value); }
+    public float GetWallStickFactor() { return m_WallStickFactor; }
 
     protected override string GetCurrentSpriteStateForDefault()
     {

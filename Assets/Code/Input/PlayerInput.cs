@@ -70,6 +70,31 @@ public class PlayerInput : MonoBehaviour
         }
     }
 
+    public void EnsureSwitchFormInputIsSet(string a_Name = "SwitchForm", string a_ButtonName = "Fire1")
+    {
+        if (m_Inputs == null)
+        {
+            m_Inputs = new InputElement[0];
+        }
+        for (int i = 0; i < m_Inputs.Length; i++)
+        {
+            if (m_Inputs[i].m_Name == a_Name)
+            {
+                return;
+            }
+        }
+        InputElement[] newInputs = new InputElement[m_Inputs.Length + 1];
+        for (int i = 0; i < m_Inputs.Length; i++)
+        {
+            newInputs[i] = m_Inputs[i];
+        }
+        newInputs[m_Inputs.Length] = new InputElement();
+        newInputs[m_Inputs.Length].m_Name = a_Name;
+        newInputs[m_Inputs.Length].m_InputType = InputElement.InputType.Button;
+        newInputs[m_Inputs.Length].m_UnityInputType = ButtonInput.UnityInputType.Button;
+        newInputs[m_Inputs.Length].m_ButtonName = a_ButtonName;
+        m_Inputs = newInputs;
+    }
     void Awake()
     {
         //Update entity controller inputs
