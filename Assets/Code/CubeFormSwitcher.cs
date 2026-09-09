@@ -27,6 +27,10 @@ public class CubeFormSwitcher : MonoBehaviour
         public float m_WallSlideGravity = 0.0f;
         [Tooltip("Pushed into WallSlidingModule.SetSlideFriction(). Fill in your current WallSlidingModule value for the Light form, then increase it for Heavy so it grips harder.")]
         public float m_WallSlideFriction = 0.0f;
+        [Tooltip("If false, this form locks WallSlidingModule entirely - the cube just falls past walls instead of sliding.")]
+        public bool m_CanWallSlide = true;
+        [Tooltip("If false, this form locks WallJumpModule entirely - pressing jump near a wall does nothing.")]
+        public bool m_CanWallJump = true;
         [Range(0.5f, 1.5f)] public float m_SquashStretchPunch = 1.0f; //visual juice multiplier on switch
     }
 
@@ -89,6 +93,7 @@ public class CubeFormSwitcher : MonoBehaviour
             m_WallStickFactor = 0.0f, //deprecated, WallSlidingModule handles stickiness now - see notes
             m_WallSlideGravity = 65.0f,
             m_WallSlideFriction = 10.0f,
+            m_CanWallSlide = false,
             m_SquashStretchPunch = 1.2f
         };
     }
@@ -209,12 +214,14 @@ public class CubeFormSwitcher : MonoBehaviour
         if (m_WallJumpModule != null)
         {
             m_WallJumpModule.SetJumpVelocity(form.m_JumpVelocity);
+            m_WallJumpModule.SetLocked(!form.m_CanWallJump);
         }
 
         if (m_WallSlideModule != null)
         {
             m_WallSlideModule.SetSlideGravity(form.m_WallSlideGravity);
             m_WallSlideModule.SetSlideFriction(form.m_WallSlideFriction);
+            m_WallSlideModule.SetLocked(!form.m_CanWallSlide);
         }
 
         SetColor(form.m_Color);
