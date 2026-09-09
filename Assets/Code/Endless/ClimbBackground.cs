@@ -47,6 +47,12 @@ public class ClimbBackground : MonoBehaviour
     [SerializeField] float m_GridDepth = 0.2f;
     [SerializeField] Color m_GridColor = new Color(0.30f, 0.34f, 0.46f);
 
+    [Header("Bottom limit")]
+    [Tooltip("Nothing in the backdrop is drawn below this world Y. Set it to the top of the starting " +
+        "floor so the grid and stars stop cleanly at the white bar instead of bleeding underneath it.")]
+    [SerializeField] bool m_ClipBelowFloor = true;
+    [SerializeField] float m_BottomLimitY = -1.26f;
+
     [Header("Stars")]
     [SerializeField] bool m_BuildStars = true;
     [Tooltip("One entry per parallax layer. Depth is distance behind the gameplay plane.")]
@@ -59,6 +65,8 @@ public class ClimbBackground : MonoBehaviour
     {
         public Transform m_Root;
         public float m_BottomY;
+        public List<Transform> m_Rails = new List<Transform>();
+        public List<Transform> m_Rungs = new List<Transform>();
     }
 
     readonly List<Tile> m_Tiles = new List<Tile>();
@@ -175,15 +183,17 @@ public class ClimbBackground : MonoBehaviour
     {
         GameObject root = new GameObject("GridTile_" + a_Index);
         root.transform.SetParent(transform, false);
+        List<Transform> rails = new List<Transform>();
+        List<Transform> rungs = new List<Transform>();
 
         //Rails: symmetric about zero so the two halves always match
         int railsEachSide = Mathf.FloorToInt(m_GridHalfWidth / m_RailPitch);
         for (int i = -railsEachSide; i <= railsEachSide; i++)
         {
             float x = i * m_RailPitch;
-            MakeBar(root.transform, "Rail_" + i,
+            rails.Add(MakeBar(root.transform, "Rail_" + i,
                 new Vector3(x, m_TileSpan * 0.5f, 0.0f),
-                new Vector3(m_RailThickness, m_TileSpan, m_GridDepth));
+                new Vector3(m_RailThickness, m_TileSpan, m_GridDepth)));
         }
 
         //Rungs: one bar spanning the full width per pitch step, so there are no
@@ -191,17 +201,19 @@ public class ClimbBackground : MonoBehaviour
         for (int i = 0; i < a_Rungs; i++)
         {
             float y = (i + 0.5f) * m_RungPitch;
-            MakeBar(root.transform, "Rung_" + i,
+            rungs.Add(MakeBar(root.transform, "Rung_" + i,
                 new Vector3(0.0f, y, 0.0f),
-                new Vector3(m_GridHalfWidth * 2.0f, m_RungThickness, m_GridDepth));
+                new Vector3(m_GridHalfWidth * 2.0f, m_RungThickness, m_GridDepth)));
         }
 
         Tile tile = new Tile();
         tile.m_Root = root.transform;
+        tile.m_Rails = rails;
+        tile.m_Rungs = rungs;
         return tile;
     }
 
-    void MakeBar(Transform a_Parent, string a_Name, Vector3 a_LocalPos, Vector3 a_Scale)
+    Transform MakeBar(Transform a_Parent, string a_Name, Vector3 a_LocalPos, Vector3 a_Scale)
     {
         GameObject bar = new GameObject(a_Name);
         bar.transform.SetParent(a_Parent, false);
@@ -214,12 +226,65 @@ public class ClimbBackground : MonoBehaviour
         renderer.sharedMaterial = m_RuntimeGridMaterial;
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         renderer.receiveShadows = false;
+        return bar.transform;
     }
 
     void PlaceTile(Tile a_Tile, float a_BottomY)
     {
         a_Tile.m_BottomY = a_BottomY;
         a_Tile.m_Root.position = new Vector3(0.0f, a_BottomY, m_GridZ);
+        ApplyBottomLimit(a_Tile);
+    }
+
+    //Trim the tile against the floor line. Rungs are whole bars so they just switch
+    //off; rails are cut down to start exactly at the limit, giving a clean edge along
+    //the white bar rather than geometry poking out below it.
+    void ApplyBottomLimit(Tile a_Tile)
+    {
+        if (!m_ClipBelowFloor)
+        {
+            return;
+        }
+        float limit = m_BottomLimitY;
+        float bottom = a_Tile.m_BottomY;
+        float top = bottom + m_TileSpan;
+
+        for (int i = 0; i < a_Tile.m_Rungs.Count; i++)
+        {
+            Transform rung = a_Tile.m_Rungs[i];
+            bool visible = (bottom + rung.localPosition.y) >= limit;
+            if (rung.gameObject.activeSelf != visible)
+            {
+                rung.gameObject.SetActive(visible);
+            }
+        }
+
+        for (int i = 0; i < a_Tile.m_Rails.Count; i++)
+        {
+            Transform rail = a_Tile.m_Rails[i];
+            if (top <= limit)
+            {
+                if (rail.gameObject.activeSelf)
+                {
+                    rail.gameObject.SetActive(false);
+                }
+                continue;
+            }
+            if (!rail.gameObject.activeSelf)
+            {
+                rail.gameObject.SetActive(true);
+            }
+
+            float visibleBottom = Mathf.Max(bottom, limit);
+            float height = top - visibleBottom;
+            Vector3 scale = rail.localScale;
+            scale.y = height;
+            rail.localScale = scale;
+
+            Vector3 pos = rail.localPosition;
+            pos.y = (visibleBottom - bottom) + (height * 0.5f);
+            rail.localPosition = pos;
+        }
     }
 
     void RecycleGrid(float a_CamY)
@@ -327,6 +392,13 @@ public class ClimbBackground : MonoBehaviour
             {
                 pos.y -= band;
                 star.position = pos;
+            }
+
+            //Keep the sky above the floor line only
+            bool visible = !m_ClipBelowFloor || pos.y >= m_BottomLimitY;
+            if (star.gameObject.activeSelf != visible)
+            {
+                star.gameObject.SetActive(visible);
             }
         }
     }

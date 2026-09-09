@@ -82,10 +82,19 @@ public class PlayerJuice : MonoBehaviour
     [SerializeField] int m_WallStickParticles = 10;
     [SerializeField] int m_LandParticles = 12;
     [SerializeField] int m_SwapParticles = 16;
+    [Tooltip("Particles thrown on a perfectly timed chain jump. Scales down with sloppier timing.")]
+    [SerializeField] int m_ChainBurstParticles = 26;
+    [Tooltip("Burst colour for a flawless chain jump.")]
+    [SerializeField] Color m_ChainPerfectColor = new Color(1.0f, 0.97f, 0.75f);
+    [Tooltip("Burst colour for a chain jump that only just made the window.")]
+    [SerializeField] Color m_ChainRoughColor = new Color(0.55f, 0.60f, 0.70f);
+    [Tooltip("Extra stretch multiplier applied to a flawless chain jump.")]
+    [Range(1.0f, 2.5f)] [SerializeField] float m_ChainPunchBonus = 1.5f;
 
     GroundedCharacterController m_Controller;
     ControlledCapsuleCollider m_Collider;
     CubeFormSwitcher m_FormSwitcher;
+    FormChainAssist m_ChainAssist;
 
     Vector3 m_BaseScale;
     Vector3 m_BaseLocalPos;
@@ -110,6 +119,7 @@ public class PlayerJuice : MonoBehaviour
         m_Controller = GetComponent<GroundedCharacterController>();
         m_Collider = GetComponent<ControlledCapsuleCollider>();
         m_FormSwitcher = GetComponent<CubeFormSwitcher>();
+        m_ChainAssist = GetComponent<FormChainAssist>();
         if (m_Sfx == null)
         {
             m_Sfx = GetComponent<ProceduralSfx>();
@@ -369,11 +379,22 @@ public class PlayerJuice : MonoBehaviour
     //----------------------------------------------------------------
     void HandleJump()
     {
-        //Negative punch = stretch tall on the way up
-        AddPunch(-m_JumpPunch);
+        //Sample the chain timing on the jump frame itself. A frame later the window may
+        //already have closed, and the quality would read as -1 for a jump that did land.
+        float quality = (m_ChainAssist != null) ? m_ChainAssist.ConsumeChainQuality() : -1.0f;
+        bool isChainJump = quality >= 0.0f;
+
+        //Negative punch = stretch tall on the way up, taller the cleaner the chain
+        float punch = isChainJump ? m_JumpPunch * Mathf.Lerp(1.0f, m_ChainPunchBonus, quality) : m_JumpPunch;
+        AddPunch(-punch);
+
         if (m_Sfx != null)
         {
-            if (m_State == JuiceState.WallSticking)
+            if (isChainJump)
+            {
+                m_Sfx.PlayQualityJump(quality);
+            }
+            else if (m_State == JuiceState.WallSticking || m_State == JuiceState.WallSlipping)
             {
                 m_Sfx.PlayWallJump();
             }
@@ -382,6 +403,24 @@ public class PlayerJuice : MonoBehaviour
                 m_Sfx.PlayJump();
             }
         }
+
+        if (isChainJump)
+        {
+            FlashChainBurst(quality);
+        }
+    }
+
+    //Brighter and fuller the better the timing, so the eye learns the window alongside the ear
+    void FlashChainBurst(float a_Quality)
+    {
+        if (m_SwapBurst == null)
+        {
+            return;
+        }
+        ParticleSystem.MainModule main = m_SwapBurst.main;
+        main.startColor = Color.Lerp(m_ChainRoughColor, m_ChainPerfectColor, a_Quality);
+        int count = Mathf.RoundToInt(Mathf.Lerp(m_ChainBurstParticles * 0.3f, m_ChainBurstParticles, a_Quality));
+        Burst(m_SwapBurst, count);
     }
 
     void HandleFormChanged(CubeFormSwitcher.CubeForm a_Form, int a_Index)

@@ -54,7 +54,9 @@ public class FormChainAssist : MonoBehaviour
     SpriteRenderer m_SpriteRenderer;
 
     float m_LastStuckTime = -99.0f;
+    float m_WindowOpenedAt = -99.0f;
     float m_WindowClosesAt = -99.0f;
+    float m_LastJumpQuality = -1.0f;
     bool m_WindowOpen;
     bool m_FormWantsWallJumpLocked;
     bool m_FormGripsWall;
@@ -63,6 +65,38 @@ public class FormChainAssist : MonoBehaviour
     public bool IsChainWindowOpen()
     {
         return m_WindowOpen;
+    }
+
+    //Quality of a chain jump taken RIGHT NOW, from 0 to 1, or -1 when no window is open.
+    //1 means the jump followed the swap instantly, which is the whole trick: hold the wall
+    //as the gripping form, swap, and leave immediately. Dawdling inside the window still
+    //works but scores lower, so the sound rewards decisiveness rather than mere legality.
+    public float GetChainQuality()
+    {
+        if (!m_WindowOpen || m_ChainWindow <= 0.0f)
+        {
+            return -1.0f;
+        }
+        float elapsed = Time.time - m_WindowOpenedAt;
+        return Mathf.Clamp01(1.0f - (elapsed / m_ChainWindow));
+    }
+
+    //Quality of the most recent chain jump, for anything that reacts after the fact
+    public float GetLastJumpQuality()
+    {
+        return m_LastJumpQuality;
+    }
+
+    //Called by PlayerJuice on the jump itself so the value is sampled at the exact moment
+    //the jump happens, not a frame later once the window has already been closed
+    public float ConsumeChainQuality()
+    {
+        float quality = GetChainQuality();
+        if (quality >= 0.0f)
+        {
+            m_LastJumpQuality = quality;
+        }
+        return quality;
     }
 
     //Fires when the window opens, so juice or UI can react
@@ -198,6 +232,7 @@ public class FormChainAssist : MonoBehaviour
     void OpenWindow()
     {
         m_WindowOpen = true;
+        m_WindowOpenedAt = Time.time;
         m_WindowClosesAt = Time.time + m_ChainWindow;
         ApplyLock(false);
         Tint(m_WindowTint);

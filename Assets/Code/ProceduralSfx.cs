@@ -87,6 +87,26 @@ public class ProceduralSfx : MonoBehaviour
         m_Attack = 0.0f, m_Decay = 9.0f, m_NoiseMix = 1.0f, m_BitCrush = 0
     };
 
+    [Header("Quality jump")]
+    [Tooltip("Tone for a perfectly timed chain jump. Kept as a clean sine with no noise or crush " +
+        "so it rings clear against every other sound in the mix.")]
+    [SerializeField] Voice m_QualityJumpPure = new Voice
+    {
+        m_Name = "QualityPure", m_Wave = Wave.Sine, m_Duration = 0.30f,
+        m_StartFreq = 520.0f, m_EndFreq = 1180.0f, m_Volume = 0.34f,
+        m_Attack = 0.005f, m_Decay = 3.2f, m_NoiseMix = 0.0f, m_BitCrush = 0
+    };
+    [Tooltip("Tone for a barely-made chain jump. Grittier and duller, but never unpleasant.")]
+    [SerializeField] Voice m_QualityJumpRough = new Voice
+    {
+        m_Name = "QualityRough", m_Wave = Wave.Square, m_Duration = 0.15f,
+        m_StartFreq = 300.0f, m_EndFreq = 640.0f, m_Volume = 0.30f,
+        m_Attack = 0.01f, m_Decay = 6.0f, m_NoiseMix = 0.22f, m_BitCrush = 7
+    };
+    [Tooltip("How many steps the purity ladder is baked into. Clips are baked once at startup " +
+        "rather than synthesised per jump, so a jump never allocates.")]
+    [Range(2, 12)] [SerializeField] int m_QualityTiers = 6;
+
     [Header("Wall slide loop")]
     [Tooltip("Seamless noise bed faded in while sliding down a wall.")]
     [SerializeField] Voice m_WallSlide = new Voice
@@ -112,6 +132,7 @@ public class ProceduralSfx : MonoBehaviour
 
     AudioSource[] m_Sources;
     int m_NextSource;
+    Voice[] m_QualityLadder;
     AudioSource m_SlideSource;
     float m_SlideTarget;
     float m_SlideLevel;
@@ -129,6 +150,7 @@ public class ProceduralSfx : MonoBehaviour
         BakeVoice(m_WallStick);
         BakeLoop(m_WallSlide);
         BakeLoop(m_WallSlip);
+        BakeQualityLadder();
 
         m_Sources = new AudioSource[Mathf.Max(1, m_VoiceCount)];
         for (int i = 0; i < m_Sources.Length; i++)
@@ -207,6 +229,21 @@ public class ProceduralSfx : MonoBehaviour
         Play(m_WallStick, 1.0f);
     }
 
+    //a_Quality 0..1, where 1 is a perfectly timed chain jump. Picks the nearest rung of
+    //the pre-baked purity ladder and nudges pitch up slightly for the cleanest ones.
+    public void PlayQualityJump(float a_Quality)
+    {
+        if (m_QualityLadder == null || m_QualityLadder.Length == 0)
+        {
+            PlayWallJump();
+            return;
+        }
+        float q = Mathf.Clamp01(a_Quality);
+        int index = Mathf.Clamp(Mathf.RoundToInt(q * (m_QualityLadder.Length - 1)),
+            0, m_QualityLadder.Length - 1);
+        Play(m_QualityLadder[index], 1.0f, Mathf.Lerp(0.97f, 1.06f, q));
+    }
+
     //a_Intensity 0 stops the loop, 1 is full volume
     public void SetWallSlide(float a_Intensity)
     {
@@ -241,6 +278,33 @@ public class ProceduralSfx : MonoBehaviour
     //----------------------------------------------------------------
     //Synthesis
     //----------------------------------------------------------------
+    //Bake the whole gritty-to-pure ladder up front. Synthesising a clip at the moment
+    //of the jump would allocate and hitch on exactly the frame that must feel tightest.
+    void BakeQualityLadder()
+    {
+        int tiers = Mathf.Max(2, m_QualityTiers);
+        m_QualityLadder = new Voice[tiers];
+
+        for (int i = 0; i < tiers; i++)
+        {
+            float t = (float)i / (tiers - 1); //0 = rough, 1 = pure
+            Voice v = new Voice();
+            v.m_Name = "QualityJump_" + i;
+            //Waveform itself gets purer, not just the parameters
+            v.m_Wave = (t > 0.66f) ? Wave.Sine : ((t > 0.33f) ? Wave.Triangle : Wave.Square);
+            v.m_Duration = Mathf.Lerp(m_QualityJumpRough.m_Duration, m_QualityJumpPure.m_Duration, t);
+            v.m_StartFreq = Mathf.Lerp(m_QualityJumpRough.m_StartFreq, m_QualityJumpPure.m_StartFreq, t);
+            v.m_EndFreq = Mathf.Lerp(m_QualityJumpRough.m_EndFreq, m_QualityJumpPure.m_EndFreq, t);
+            v.m_Volume = Mathf.Lerp(m_QualityJumpRough.m_Volume, m_QualityJumpPure.m_Volume, t);
+            v.m_Attack = Mathf.Lerp(m_QualityJumpRough.m_Attack, m_QualityJumpPure.m_Attack, t);
+            v.m_Decay = Mathf.Lerp(m_QualityJumpRough.m_Decay, m_QualityJumpPure.m_Decay, t);
+            v.m_NoiseMix = Mathf.Lerp(m_QualityJumpRough.m_NoiseMix, m_QualityJumpPure.m_NoiseMix, t);
+            v.m_BitCrush = Mathf.RoundToInt(Mathf.Lerp(m_QualityJumpRough.m_BitCrush, m_QualityJumpPure.m_BitCrush, t));
+            BakeVoice(v);
+            m_QualityLadder[i] = v;
+        }
+    }
+
     void BakeVoice(Voice a_Voice)
     {
         int sampleCount = Mathf.Max(1, Mathf.RoundToInt(a_Voice.m_Duration * k_SampleRate));
