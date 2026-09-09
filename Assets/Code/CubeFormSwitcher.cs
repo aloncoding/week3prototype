@@ -38,6 +38,8 @@ public class CubeFormSwitcher : MonoBehaviour
     [SerializeField] string m_WallJumpModuleName = "WallJump";
     [Tooltip("Must match the Module Name field set on your WallSlidingModule component.")]
     [SerializeField] string m_WallSlideModuleName = "WallSlide";
+    [Tooltip("Transform to squash/stretch on form switch. MUST be a child object holding the sprite, not the root - scaling the root would also scale the physics collider and cause wall-detection glitches. Leave empty to auto-use the SpriteRenderer's transform.")]
+    [SerializeField] Transform m_VisualTransform;
     [SerializeField] CubeForm[] m_Forms;
     [SerializeField] int m_StartingFormIndex = 0;
     [SerializeField] float m_SwitchAnimDuration = 0.12f;
@@ -62,28 +64,32 @@ public class CubeFormSwitcher : MonoBehaviour
     void Reset()
     {
         m_Forms = new CubeForm[2];
-        //Light == the baseline stats from GroundedCharacterController.Reset() untouched,
-        //so this form always matches whatever the "normal" tuned feel of the game is.
+        //Heavy == your tuned baseline, untouched. This is the "normal" feel of the game.
         m_Forms[0] = new CubeForm
-        {
-            m_FormName = "Light",
-            m_Color = new Color(1f, 0.92f, 0.35f), //bright pale yellow - reads as "light"
-            m_JumpVelocity = 32.0f,
-            m_Gravity = 50.0f,
-            m_FrictionConstant = 8.0f,
-            m_WallStickFactor = 0.05f, //slips down walls fast
-            m_SquashStretchPunch = 1.2f
-        };
-        //Heavy == a clear reduction from that same baseline, not an arbitrary separate tune.
-        m_Forms[1] = new CubeForm
         {
             m_FormName = "Heavy",
             m_Color = new Color(0.16f, 0.17f, 0.22f), //dark charcoal - reads as "heavy"
-            m_JumpVelocity = 20.0f, //~62% of baseline - short jump per GDD
+            m_JumpVelocity = 32.0f,
             m_Gravity = 50.0f,
-            m_FrictionConstant = 12.0f, //stops faster on ground, feels more adhesive
-            m_WallStickFactor = 0.85f, //placeholder - see note on wall-slide script
+            m_FrictionConstant = 8.0f,
+            m_WallStickFactor = 0.0f, //deprecated, WallSlidingModule handles stickiness now - see notes
+            m_WallSlideGravity = 40.0f,
+            m_WallSlideFriction = 27.0f,
             m_SquashStretchPunch = 0.85f
+        };
+        //Light == a clear deviation above that baseline: jumps a bit higher, slides down walls
+        //faster (higher slide gravity, lower slide friction = weaker grip).
+        m_Forms[1] = new CubeForm
+        {
+            m_FormName = "Light",
+            m_Color = new Color(1f, 0.92f, 0.35f), //bright pale yellow - reads as "light"
+            m_JumpVelocity = 38.0f,
+            m_Gravity = 50.0f,
+            m_FrictionConstant = 5.0f,
+            m_WallStickFactor = 0.0f, //deprecated, WallSlidingModule handles stickiness now - see notes
+            m_WallSlideGravity = 65.0f,
+            m_WallSlideFriction = 10.0f,
+            m_SquashStretchPunch = 1.2f
         };
     }
 
@@ -98,6 +104,22 @@ public class CubeFormSwitcher : MonoBehaviour
             m_PropBlock = new MaterialPropertyBlock();
         }
         m_BaseScale = transform.localScale;
+
+        if (m_VisualTransform == null && m_SpriteRenderer != null)
+        {
+            m_VisualTransform = m_SpriteRenderer.transform;
+        }
+        if (m_VisualTransform == null || m_VisualTransform == transform)
+        {
+            m_VisualTransform = null;
+            Debug.LogWarning("CubeFormSwitcher: no separate visual child transform found - squash/stretch juice is " +
+                "DISABLED to avoid scaling the collider's own root transform. Put the sprite on a child object and " +
+                "assign it to Visual Transform to re-enable the juice.");
+        }
+        else
+        {
+            m_BaseScale = m_VisualTransform.localScale;
+        }
 
         if (m_Controller == null)
         {
@@ -197,7 +219,7 @@ public class CubeFormSwitcher : MonoBehaviour
 
         SetColor(form.m_Color);
 
-        if (a_PlayJuice)
+        if (a_PlayJuice && m_VisualTransform != null)
         {
             if (m_JuiceRoutine != null)
             {
@@ -235,10 +257,10 @@ public class CubeFormSwitcher : MonoBehaviour
         {
             t += Time.deltaTime;
             float lerpT = t / m_SwitchAnimDuration;
-            transform.localScale = Vector3.Lerp(squashed, m_BaseScale, lerpT);
+            m_VisualTransform.localScale = Vector3.Lerp(squashed, m_BaseScale, lerpT);
             yield return null;
         }
-        transform.localScale = m_BaseScale;
+        m_VisualTransform.localScale = m_BaseScale;
     }
 
     public CubeForm GetCurrentForm()
