@@ -27,8 +27,13 @@ public class CubeFormSwitcher : MonoBehaviour
         public float m_WallSlideGravity = 0.0f;
         [Tooltip("Pushed into WallSlidingModule.SetSlideFriction(). Fill in your current WallSlidingModule value for the Light form, then increase it for Heavy so it grips harder.")]
         public float m_WallSlideFriction = 0.0f;
-        [Tooltip("If false, this form locks WallSlidingModule entirely - the cube just falls past walls instead of sliding.")]
+        [Tooltip("If false, this form locks WallSlidingModule entirely - the cube just falls past walls, ignoring them completely.")]
         public bool m_CanWallSlide = true;
+        [Tooltip("Whether this form can actually come to a STOP on a wall. Set slide friction well above slide gravity " +
+            "for a form that grips, and below it for a form that only slips. This flag does not drive the physics - it " +
+            "tells the juice and the chain assist which of the two this form is meant to be, so keep it consistent " +
+            "with the numbers above.")]
+        public bool m_GripsWall = true;
         [Tooltip("If false, this form locks WallJumpModule entirely - pressing jump near a wall does nothing.")]
         public bool m_CanWallJump = true;
         [Range(0.5f, 1.5f)] public float m_SquashStretchPunch = 1.0f; //visual juice multiplier on switch
@@ -56,6 +61,7 @@ public class CubeFormSwitcher : MonoBehaviour
     MaterialPropertyBlock m_PropBlock;
     WallJumpModule m_WallJumpModule;
     WallSlidingModule m_WallSlideModule;
+    PlayerJuice m_PlayerJuice;
 
     int m_CurrentFormIndex = -1;
     Coroutine m_JuiceRoutine;
@@ -77,8 +83,9 @@ public class CubeFormSwitcher : MonoBehaviour
             m_Gravity = 50.0f,
             m_FrictionConstant = 8.0f,
             m_WallStickFactor = 0.0f, //deprecated, WallSlidingModule handles stickiness now - see notes
-            m_WallSlideGravity = 40.0f,
-            m_WallSlideFriction = 27.0f,
+            m_WallSlideGravity = 14.0f,
+            m_WallSlideFriction = 110.0f, //friction must exceed gravity or the cube slides at constant speed forever
+            m_GripsWall = true,
             m_SquashStretchPunch = 0.85f
         };
         //Light == a clear deviation above that baseline: jumps a bit higher, slides down walls
@@ -91,9 +98,10 @@ public class CubeFormSwitcher : MonoBehaviour
             m_Gravity = 50.0f,
             m_FrictionConstant = 5.0f,
             m_WallStickFactor = 0.0f, //deprecated, WallSlidingModule handles stickiness now - see notes
-            m_WallSlideGravity = 65.0f,
-            m_WallSlideFriction = 10.0f,
-            m_CanWallSlide = false,
+            m_WallSlideGravity = 22.0f,
+            m_WallSlideFriction = 12.0f, //below gravity, so this form always keeps slipping and never stops
+            m_CanWallSlide = true,
+            m_GripsWall = false,
             m_SquashStretchPunch = 1.2f
         };
     }
@@ -102,6 +110,7 @@ public class CubeFormSwitcher : MonoBehaviour
     {
         m_Controller = GetComponent<GroundedCharacterController>();
         m_PlayerInput = GetComponent<PlayerInput>();
+        m_PlayerJuice = GetComponent<PlayerJuice>();
         m_SpriteRenderer = GetComponentInChildren<SpriteRenderer>();
         if (m_SpriteRenderer == null)
         {
@@ -117,9 +126,12 @@ public class CubeFormSwitcher : MonoBehaviour
         if (m_VisualTransform == null || m_VisualTransform == transform)
         {
             m_VisualTransform = null;
-            Debug.LogWarning("CubeFormSwitcher: no separate visual child transform found - squash/stretch juice is " +
-                "DISABLED to avoid scaling the collider's own root transform. Put the sprite on a child object and " +
-                "assign it to Visual Transform to re-enable the juice.");
+            if (m_PlayerJuice == null)
+            {
+                Debug.LogWarning("CubeFormSwitcher: no separate visual child transform found - squash/stretch juice is " +
+                    "DISABLED to avoid scaling the collider's own root transform. Put the sprite on a child object and " +
+                    "assign it to Visual Transform to re-enable the juice.");
+            }
         }
         else
         {
@@ -226,7 +238,9 @@ public class CubeFormSwitcher : MonoBehaviour
 
         SetColor(form.m_Color);
 
-        if (a_PlayJuice && m_VisualTransform != null)
+        //PlayerJuice owns the visual transform when it is present - it reacts to
+        //OnFormChanged itself, so running our own coroutine too would fight it
+        if (a_PlayJuice && m_PlayerJuice == null && m_VisualTransform != null)
         {
             if (m_JuiceRoutine != null)
             {
